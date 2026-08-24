@@ -68,14 +68,26 @@ is honest about what it could not evaluate.
 
 ### Exit codes
 
+These are the exit codes of `scan/trustabl-scan.sh` — the status your CodeBuild
+action or CodeCatalyst run actually observes.
+
 | Code | Meaning |
 |---|---|
-| `0` | No findings at or above medium |
-| `1` | Gated — findings crossed a configured threshold |
-| `2` | Scanner or I/O error, or no usable rules |
+| `0` | The scan ran and cleared every gate |
+| `1` | Gated — the scan ran and its result crossed a threshold |
+| `2` | The scan did not produce a trustworthy result |
 
 **Exit 1 is a result, not a malfunction.** Exit 2 means the scan did not complete
-and the output should not be trusted.
+and the output should not be trusted — the scanner crashed, exited with a code
+that does not correspond to a finding, or produced a `trustabl.json` that cannot
+be parsed or carries no score.
+
+When both apply — a crashed scanner on a run that would also have tripped a
+threshold — you get `2`. A broken scan outranks a policy decision, because the
+policy decision was computed from a result that isn't reliable.
+
+The binary's own exit code is preserved separately as `TRUSTABL_EXIT_CODE` in
+`trustabl.env`, and as the "Native exit" row in the log panel.
 
 ### Output files
 

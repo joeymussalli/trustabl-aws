@@ -141,11 +141,25 @@ NATIVE_CODE=$?
 trustabl "${BASE_ARGS[@]}" --format json > "$JSON_FILE" || true
 SCAN_END=$(date -u +%Y-%m-%dT%H:%M:%S)
 
+# A result we cannot use is a failed scan, not a clean one: every metric below
+# falls back to a default, and on default thresholds the run would still pass.
+JSON_OK=true
+if ! jq -e . "$JSON_FILE" >/dev/null 2>&1; then
+  JSON_OK=false
+  echo "WARNING: $JSON_FILE is missing or not valid JSON — the scan did not complete"
+elif ! jq -e '.overall_score | numbers' "$JSON_FILE" >/dev/null 2>&1; then
+  # '.overall_score // 1' below reads a missing score as a perfect 100 — exactly
+  # the "high score over an empty inventory" trap docs/EVALUATION.md warns about.
+  JSON_OK=false
+  echo "WARNING: $JSON_FILE has no numeric .overall_score — the result is not scoreable"
+fi
+
 # trustabl's overall_score is a float in [0.0, 1.0]; scale to [0,100] ints.
-RAW_SCORE=$(jq -r '.overall_score // 1' "$JSON_FILE")
+RAW_SCORE=$(jq -r '.overall_score // 1' "$JSON_FILE" 2>/dev/null)
 SCORE=$(awk -v s="$RAW_SCORE" 'BEGIN{ v = s*100; if (v<0) v=0; if (v>100) v=100; printf "%d", v + 0.5 }')
 RISK=$(( 100 - SCORE ))
-COUNT=$(jq -r '.findings | length // 0' "$JSON_FILE")
+COUNT=$(jq -r '.findings | length // 0' "$JSON_FILE" 2>/dev/null)
+: "${COUNT:=0}"
 MAX_SEV=$(jq -r '
   [.findings[].severity] as $s
   | if ($s|length)==0 then "none"
@@ -154,7 +168,8 @@ MAX_SEV=$(jq -r '
     elif any($s[]; .=="medium")   then "medium"
     elif any($s[]; .=="low")      then "low"
     else "info" end
-' "$JSON_FILE")
+' "$JSON_FILE" 2>/dev/null)
+: "${MAX_SEV:=none}"
 
 # ---- dotenv outputs (downstream steps can `source trustabl.env`) ----
 {
@@ -239,8 +254,24 @@ printf '%b  Projected = estimate from trustabl'\''s own formula; listed fixes re
 echo ""
 
 FAIL=0; REASONS=()
-if [ "$NATIVE_CODE" = "2" ]; then FAIL=1; REASONS+=("scanner error (exit 2)"); fi
-if [ "$NATIVE_CODE" = "1" ]; then FAIL=1; REASONS+=("trustabl gated (medium+ or --strict)"); fi
+# RC is the code we exit with: 1 = the scan ran and its result crossed a gate,
+# 2 = the scan did not produce a trustworthy result. docs/EVALUATION.md already
+# documents that split ("Exit 1 is a result, not a malfunction"), but every path
+# used to exit 1, so 2 was unreachable and the two were indistinguishable to
+# anything reading the process status. A broken scan outranks a policy gate, so
+# RC only ever moves up to 2.
+RC=1
+# Gate on every non-zero exit. Matching only 1 and 2 let a crashed or missing
+# binary (127, 126, a fatal signal) fall through to "passed scanning".
+case "$NATIVE_CODE" in
+  0) ;;
+  1) FAIL=1; REASONS+=("trustabl gated (medium+ or --strict)") ;;
+  2) FAIL=1; RC=2; REASONS+=("scanner error (exit 2)") ;;
+  *) FAIL=1; RC=2; REASONS+=("scanner exited unexpectedly (exit $NATIVE_CODE)") ;;
+esac
+if [ "$JSON_OK" != "true" ]; then
+  FAIL=1; RC=2; REASONS+=("no usable $JSON_FILE — results cannot be trusted")
+fi
 
 RST="$RISK_THRESHOLD"
 if [ "$RST" -gt 0 ] 2>/dev/null && [ "$RISK" -ge "$RST" ]; then
@@ -291,7 +322,7 @@ SUMMARY="trustabl-summary.md"
 if [ "$FAIL" = "1" ]; then
   printf '%b\n' "${RED}✗ Failed due to: ${REASONS[*]}${RESET}"
   echo "### ❌ Failed — ${REASONS[*]}" >> "$SUMMARY"
-  exit 1
+  exit "$RC"
 fi
 
 printf '%b\n' "${GREEN}✓ Successfully passed scanning${RESET}"
