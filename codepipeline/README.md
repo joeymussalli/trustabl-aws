@@ -11,7 +11,7 @@
 
 A gate failure exits non-zero -> the CodeBuild action fails -> the pipeline
 stage fails. Artifacts (`trustabl.json`, `trustabl.sarif`,
-`trustabl-summary.md`) are emitted to the artifact bucket.
+`trustabl-summary.md`, `trustabl.env`) are emitted to the artifact bucket.
 
 **Optional — Security Hub:** convert findings to ASFF and
 `aws securityhub batch-import-findings` to surface them in Security Hub (needs
@@ -47,8 +47,8 @@ Source output.
 ### 4. Run it (Release change)
 Each run downloads the trustabl binary (sha256-verified), scans your checkout,
 prints the readiness report, uploads `trustabl.json` / `trustabl.sarif` /
-`trustabl-summary.md` as artifacts, and **fails the stage if any finding is
-medium-or-higher** — so the pipeline stops on unsafe agent code.
+`trustabl-summary.md` / `trustabl.env` as artifacts, and **fails the stage if
+any finding is medium-or-higher** — so the pipeline stops on unsafe agent code.
 
 > **Want report-only (don't block the pipeline)?** trustabl fails on medium+ by
 > default. To make it advisory, change the build command in your buildspec to:
