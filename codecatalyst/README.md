@@ -1,5 +1,12 @@
 # Trustabl on Amazon CodeCatalyst
 
+> [!IMPORTANT]
+> **CodeCatalyst is closed to new customers as of November 7, 2025.** Existing
+> customers can keep using it as normal, and this integration is for them. If
+> you cannot open a CodeCatalyst space, that is why — use
+> [CodePipeline](../codepipeline/README.md) instead. See
+> [How to migrate from CodeCatalyst](https://docs.aws.amazon.com/codecatalyst/latest/userguide/migration.html).
+
 1. **Vendor** this plugin into your repo: copy `scan/` to your repo.
 2. Add `codecatalyst/workflows/trustabl.yaml` to `.codecatalyst/workflows/` in
    your repo (or paste it via the CodeCatalyst workflow editor).
@@ -53,5 +60,12 @@ console (CodeCatalyst has no standalone scan CLI like CodeBuild).
 
 **Notes**
 - Linux build image only.
-- The SARIF report `Format` enum (`SARIFSCA`) — verify against current
-  CodeCatalyst docs; the schema evolves.
+- `Format: SARIFSCA` is correct: it is the only SARIF value CodeCatalyst accepts
+  in the YAML editor. The docs read "For SARIF, specify **SARIF** (visual
+  editor) or `SARIFSCA` (YAML editor)". There is no separate SAST-SARIF enum —
+  the SA formats are `ESLINTJSON` and `PYLINTJSON` — so a SARIF report goes in
+  under the SCA format regardless of the tool that produced it. See
+  [Build and test actions YAML](https://docs.aws.amazon.com/codecatalyst/latest/userguide/build-action-ref.html).
+- The workflow sets `AutoDiscoverReports: Enabled: false`. Auto-discovery
+  defaults to on and inspects every file the action generates, which would
+  surface `trustabl.sarif` a second time next to the manual report.
