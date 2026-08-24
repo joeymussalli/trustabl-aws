@@ -35,8 +35,23 @@ export TRUSTABL_RULES_REPO="$RULES_REPO"
 
 # Optional GitHub auth (set GITHUB_TOKEN as a secret) to dodge the 60 req/hr
 # anonymous GitHub API limit on version lookup + download.
+#
+# DEBUG=true turns on xtrace, which echoes every expanded command — so passing
+# the token as a -H argument would print it into the build log (CloudWatch, or
+# the CodeCatalyst console) on every curl call. Hand it to curl through a 0600
+# config file instead: the traced command line then shows only the file path,
+# and the rest of the run stays traceable.
 AUTH=()
-[ -n "${GITHUB_TOKEN:-}" ] && AUTH=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+# set +x before the test, not inside it: xtrace echoes the expanded `[ -n
+# <token> ]` too, so silencing only the body still leaks it once.
+{ set +x; } 2>/dev/null
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  CURL_CFG="$(mktemp)"
+  chmod 600 "$CURL_CFG"
+  printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" > "$CURL_CFG"
+  AUTH=(--config "$CURL_CFG")
+fi
+[ "${DEBUG:-false}" = "true" ] && set -x
 
 # ---- resolve branch label ----
 # CodeBuild gives refs/heads/<branch> in CODEBUILD_WEBHOOK_HEAD_REF; CodeCatalyst
@@ -103,6 +118,10 @@ if curl -fsSL "${AUTH[@]}" -o "$DEST/checksums.txt" \
 else
   echo "WARNING: could not fetch checksums.txt — skipping verification"
 fi
+
+# Last authenticated call is done; don't leave a credential on disk for the
+# rest of the run.
+[ -n "${CURL_CFG:-}" ] && rm -f "$CURL_CFG"
 
 tar -xzf "$DEST/$ASSET" -C "$DEST"
 export PATH="$DEST:$PATH"

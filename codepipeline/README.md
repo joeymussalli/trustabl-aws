@@ -38,6 +38,9 @@ Console → **CodeBuild → Create build project**:
 - **Service role:** let CodeBuild create one (it needs CloudWatch Logs)
 - *(optional)* **Env vars:** `SEVERITY_THRESHOLD`, `RISK_SCORE_THRESHOLD`,
   `VERSION` (pin a tag), `GITHUB_TOKEN` (dodges GitHub's 60-req/hr anon limit)
+- **`GITHUB_TOKEN` is a credential** — add it with type **Secrets Manager** or
+  **Parameter Store**, not as a plaintext environment variable. Plaintext env
+  vars are readable by anyone with `codebuild:BatchGetProjects`.
 
 ### 3. Add it to your pipeline
 CodePipeline → your pipeline → **Edit** → add a **Build/Test** stage →
