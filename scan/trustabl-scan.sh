@@ -39,12 +39,27 @@ AUTH=()
 [ -n "${GITHUB_TOKEN:-}" ] && AUTH=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
 
 # ---- resolve branch label ----
-# CodeBuild gives refs/heads/<branch> in CODEBUILD_WEBHOOK_HEAD_REF; CodeCatalyst
-# exposes none reliably, so fall back to the checkout's current HEAD.
+# CodeBuild webhook builds give refs/heads/<branch> in CODEBUILD_WEBHOOK_HEAD_REF.
+# Non-webhook CodeBuild often puts the branch (or a commit SHA) in
+# CODEBUILD_SOURCE_VERSION. CodeCatalyst exposes neither reliably, so fall back
+# to the checkout's current HEAD.
 # Prefer HEAD over "does main/master exist?" — a clone almost always has main,
 # so preferring that label misreports feature-branch / PR builds as main.
 BR="$BRANCH_INPUT"
 if [ -z "$BR" ]; then BR="${CODEBUILD_WEBHOOK_HEAD_REF:-}"; BR="${BR#refs/heads/}"; fi
+if [ -z "$BR" ]; then
+  CSV="${CODEBUILD_SOURCE_VERSION:-}"
+  case "$CSV" in
+    refs/heads/*) BR="${CSV#refs/heads/}" ;;
+    refs/tags/*|"") ;;
+    *)
+      # Skip bare 40-char SHAs — those are commits, not branch names.
+      if ! printf '%s' "$CSV" | grep -Eq '^[0-9a-f]{40}$'; then
+        BR="$CSV"
+      fi
+      ;;
+  esac
+fi
 if [ -z "$BR" ]; then
   if git -C "$TARGET" rev-parse --git-dir >/dev/null 2>&1; then
     BR=$(git -C "$TARGET" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
