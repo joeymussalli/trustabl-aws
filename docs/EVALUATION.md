@@ -17,6 +17,32 @@ It looks for the failure modes ordinary code review misses, for example a tool
 that shells out and can be prompt-injected, an agent session with no turn limit,
 or an MCP tool that fetches a caller-controlled URL.
 
+### Detector identifiers
+
+`DETECTORS` takes a comma-separated subset of these. Omit it to run them all.
+
+| Identifier | Covers |
+|---|---|
+| `claude_sdk` | Claude Agent SDK (Python and TypeScript) |
+| `claude_skill` | Claude Code skills |
+| `openai_sdk` | OpenAI Agents SDK |
+| `google_adk` | Google Agent Development Kit |
+| `mcp` | Model Context Protocol |
+| `langchain` | LangChain and LangGraph |
+| `crewai` | CrewAI |
+| `autogen` | AutoGen / AG2 |
+| `pydantic_ai` | Pydantic AI |
+| `vercel_ai` | Vercel AI SDK |
+| `openshell` | Shell-invocation tools |
+
+Two things worth noting. `langchain` covers **both** LangChain and LangGraph, so
+the list of ten ecosystems above maps to ten identifiers plus `openshell`, which
+is a cross-cutting detector rather than an SDK. And a value that isn't on this
+list is passed through to the scanner verbatim — restricting to a name that does
+not exist gives you a scan with nothing to detect, which looks a lot like a clean
+repository. Check the inventory counts in the report before trusting a narrowed
+scan.
+
 Rules are versioned separately from the engine and fetched at scan time from a
 signed channel, so a scan picks up new detections without upgrading the binary.
 
