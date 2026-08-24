@@ -40,17 +40,21 @@ AUTH=()
 
 # ---- resolve branch label ----
 # CodeBuild gives refs/heads/<branch> in CODEBUILD_WEBHOOK_HEAD_REF; CodeCatalyst
-# exposes none reliably, so fall back to git on the checkout.
+# exposes none reliably, so fall back to the checkout's current HEAD.
+# Prefer HEAD over "does main/master exist?" — a clone almost always has main,
+# so preferring that label misreports feature-branch / PR builds as main.
 BR="$BRANCH_INPUT"
 if [ -z "$BR" ]; then BR="${CODEBUILD_WEBHOOK_HEAD_REF:-}"; BR="${BR#refs/heads/}"; fi
 if [ -z "$BR" ]; then
   if git -C "$TARGET" rev-parse --git-dir >/dev/null 2>&1; then
-    if   git -C "$TARGET" show-ref --verify --quiet refs/heads/main;   then BR=main
-    elif git -C "$TARGET" show-ref --verify --quiet refs/heads/master; then BR=master
-    else BR=$(git -C "$TARGET" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+    BR=$(git -C "$TARGET" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+    # Detached HEAD reports "HEAD" — not a useful branch label.
+    if [ -z "$BR" ] || [ "$BR" = "HEAD" ]; then
+      BR=unknown
     fi
+  else
+    BR=unknown
   fi
-  [ -z "$BR" ] && BR=unknown
 fi
 echo "Trustabl scanning branch: $BR"
 
