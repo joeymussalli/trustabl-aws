@@ -184,15 +184,45 @@ MAX_SEV=$(jq -r '
 # Per-tool score = max(0, 1 - weighted/3); overall = min over tools;
 # per-finding weight = severityWeight*confidence. We re-apply that with
 # selected severities "resolved" to project headroom. NOT a re-scan.
+#
+# The whole panel is anchored on projected([]) — the same min-over-tools
+# formula with nothing resolved — NOT on .overall_score, which is weighted
+# across surfaces and so measures a different thing. Mixing the two produced
+# projections below the starting point (negative "headroom"). Every field is
+# tolerant of malformed findings: one missing key must not void the panel.
 PROJ_JQ='
+  def num($v; $d): if ($v|type)=="number" then $v else $d end;
+  def key($v; $d): if ($v|type)=="string" then $v else $d end;
   def sw($s): if $s=="critical" then 1.0 elif $s=="high" then 0.7 elif $s=="medium" then 0.4 elif $s=="low" then 0.15 else 0.05 end;
-  def removed($rm): reduce (.findings[]? | select(.severity as $s | $rm | index($s))) as $f ({}; .[$f.tool_name] = ((.[$f.tool_name] // 0) + (sw($f.severity) * $f.confidence)));
-  def projected($rm): removed($rm) as $r | [ .readiness[]? | (.weighted_severity - (($r[.tool_name]) // 0)) as $w | (if $w<0 then 0 else $w end) as $w2 | (1 - $w2/3.0) as $s | (if $s<0 then 0 else $s end) ] | (if length==0 then 1 else min end);
+  def removed($rm): reduce (.findings[]? | select(.severity as $s | $rm | index($s))) as $f ({}; key($f.tool_name; "::untooled::") as $k | .[$k] = ((.[$k] // 0) + (sw($f.severity) * num($f.confidence; 1.0))));
+  def projected($rm): removed($rm) as $r | [ .readiness[]? | (num(.weighted_severity; 0) - (($r[key(.tool_name; "::unmatched::")]) // 0)) as $w | (if $w<0 then 0 else $w end) as $w2 | (1 - $w2/3.0) as $s | (if $s<0 then 0 else $s end) ] | (if length==0 then 1 else min end);
   def p100($x): ($x*100 + 0.5 | floor);
-  [ p100(projected(["critical"])), p100(projected(["critical","high"])), p100(projected(["critical","high","medium"])), p100(projected(["critical","high","medium","low"])), p100(projected(["critical","high","medium","low","info"])) ] | @tsv
+  if ((.readiness|type) != "array") or ((.readiness|length) == 0) then empty
+  else [ p100(projected([])), p100(projected(["critical"])), p100(projected(["critical","high"])), p100(projected(["critical","high","medium"])), p100(projected(["critical","high","medium","low"])), p100(projected(["critical","high","medium","low","info"])) ] | @tsv end
 '
-read P_CRIT P_CH P_CHM P_CHML P_ALL < <(jq -r "$PROJ_JQ" "$JSON_FILE" 2>/dev/null | tr -d '\r')
-: "${P_CRIT:=$SCORE}"; : "${P_CH:=$SCORE}"; : "${P_CHM:=$SCORE}"; : "${P_CHML:=$SCORE}"; : "${P_ALL:=100}"
+# Keep stderr: if jq still bails we say so in the log instead of silently
+# rendering a made-up projection.
+PROJ_RAW=$(jq -r "$PROJ_JQ" "$JSON_FILE" 2>&1 | tr -d '\r')
+PROJ_OK=1
+read -r P_BASE P_CRIT P_CH P_CHM P_CHML P_ALL <<<"$PROJ_RAW"
+for p in "$P_BASE" "$P_CRIT" "$P_CH" "$P_CHM" "$P_CHML" "$P_ALL"; do
+  case "$p" in ''|*[!0-9]*) PROJ_OK=0 ;; esac
+done
+if [ "$PROJ_OK" != "1" ]; then
+  PROJ_WHY="${PROJ_RAW%%$'\n'*}"
+  [ -z "$PROJ_WHY" ] && PROJ_WHY="no .readiness data in $JSON_FILE"
+  echo "WARNING: projected readiness unavailable ($PROJ_WHY) — reporting no headroom"
+  P_BASE=""; P_CRIT=""; P_CH=""; P_CHM=""; P_CHML=""; P_ALL=""
+fi
+# Conservative fallback: no headroom known, never a fabricated perfect score.
+: "${P_BASE:=$SCORE}"; : "${P_CRIT:=$SCORE}"; : "${P_CH:=$SCORE}"; : "${P_CHM:=$SCORE}"; : "${P_CHML:=$SCORE}"; : "${P_ALL:=$SCORE}"
+# Resolving more findings can only lower weighted severity, so the ladder is
+# non-decreasing by construction; clamp anyway so no delta can come out negative.
+[ "$P_CRIT" -lt "$P_BASE"  ] 2>/dev/null && P_CRIT="$P_BASE"
+[ "$P_CH"   -lt "$P_CRIT"  ] 2>/dev/null && P_CH="$P_CRIT"
+[ "$P_CHM"  -lt "$P_CH"    ] 2>/dev/null && P_CHM="$P_CH"
+[ "$P_CHML" -lt "$P_CHM"   ] 2>/dev/null && P_CHML="$P_CHM"
+[ "$P_ALL"  -lt "$P_CHML"  ] 2>/dev/null && P_ALL="$P_CHML"
 read SEV_CRIT SEV_HIGH SEV_MED SEV_LOW SEV_INFO < <(jq -r '[.findings[]?.severity] as $s | "\([$s[]|select(.=="critical")]|length)\t\([$s[]|select(.=="high")]|length)\t\([$s[]|select(.=="medium")]|length)\t\([$s[]|select(.=="low")]|length)\t\([$s[]|select(.=="info")]|length)"' "$JSON_FILE" 2>/dev/null | tr -d '\r')
 : "${SEV_CRIT:=0}"; : "${SEV_HIGH:=0}"; : "${SEV_MED:=0}"; : "${SEV_LOW:=0}"; : "${SEV_INFO:=0}"
 
@@ -216,9 +246,10 @@ center() { local t="$1" c="$2" len=${#1} lp rp; lp=$(( (58-len)/2 )); [ $lp -lt 
 md_emoji() { local v="$1" w=10 f e i out=""; f=$(awk -v v="$v" -v w="$w" 'BEGIN{n=int(v/100*w+0.5);if(n>w)n=w;if(n<0)n=0;print n}'); if [ "$v" -ge 70 ] 2>/dev/null; then e="🟩"; elif [ "$v" -ge 40 ] 2>/dev/null; then e="🟨"; else e="🟥"; fi; for ((i=0;i<f;i++)); do out+="$e"; done; for ((i=f;i<w;i++)); do out+="⬜"; done; printf '%s' "$out"; }
 md_count() { local v="$1" m="$2" w=8 f i out=""; f=$(awk -v v="$v" -v m="$m" -v w="$w" 'BEGIN{if(m<=0)m=1;n=int(v/m*w+0.5);if(n>w)n=w;if(n<0)n=0;print n}'); for ((i=0;i<f;i++)); do out+="▰"; done; for ((i=f;i<w;i++)); do out+="▱"; done; printf '%s' "$out"; }
 trunc() { local s="$1" max="$2"; if [ ${#s} -gt "$max" ]; then printf '%s~' "${s:0:$((max-1))}"; else printf '%s' "$s"; fi; }
+sgn() { printf '%+d' "$1"; }
 
-D_ALL=$(( P_ALL - SCORE ))
-L1=$(( P_CRIT - SCORE )); L2=$(( P_CH - P_CRIT )); L3=$(( P_CHM - P_CH )); L4=$(( P_CHML - P_CHM )); L5=$(( P_ALL - P_CHML ))
+D_ALL=$(( P_ALL - P_BASE ))
+L1=$(( P_CRIT - P_BASE )); L2=$(( P_CH - P_CRIT )); L3=$(( P_CHM - P_CH )); L4=$(( P_CHML - P_CHM )); L5=$(( P_ALL - P_CHML ))
 SUB=$(trunc "$REPO  -  $BR  -  $COUNT findings" 56)
 SMAX=1; for n in "$SEV_CRIT" "$SEV_HIGH" "$SEV_MED" "$SEV_LOW" "$SEV_INFO"; do [ "$n" -gt "$SMAX" ] 2>/dev/null && SMAX="$n"; done
 
@@ -226,13 +257,13 @@ echo ""
 printf '%b+%s+%b\n' "$FG_CYA" "$DASH_TOP" "$RESET"
 center "TRUSTABL SCAN REPORT" "$BOLD"
 center "$SUB" "$DIM"
-center "Readiness  $SCORE -> $P_ALL  (+$D_ALL)" "$BOLD"
+center "Projected  $P_BASE -> $P_ALL  ($(sgn "$D_ALL"))" "$BOLD"
 printf '%b+%s+%s+%b\n' "$FG_CYA" "$DASH_L" "$DASH_R" "$RESET"
 cell "Repository" "$FG_MAG" "$(trunc "$REPO" "$VAL_W")"
 cell "Branch"     "$FG_CYA" "$(trunc "$BR" "$VAL_W")"
 printf '%b+%s+%s+%b\n' "$FG_CYA" "$DASH_L" "$DASH_R" "$RESET"
 gauge "Readiness now"  "$SCORE" 12 "$(score_color "$SCORE")" "$SCORE/100"
-gauge "Projected all"  "$P_ALL" 12 "$(score_color "$P_ALL")" "$P_ALL/100  +$D_ALL"
+gauge "Projected all"  "$P_ALL" 12 "$(score_color "$P_ALL")" "$P_ALL/100  $(sgn "$D_ALL")"
 printf '%b+%s+%s+%b\n' "$FG_CYA" "$DASH_L" "$DASH_R" "$RESET"
 barcell "critical" "$SEV_CRIT" "$SMAX" "$(sev_color critical)" "$SEV_CRIT"
 barcell "high"     "$SEV_HIGH" "$SMAX" "$(sev_color high)"     "$SEV_HIGH"
@@ -240,17 +271,20 @@ barcell "medium"   "$SEV_MED"  "$SMAX" "$(sev_color medium)"   "$SEV_MED"
 barcell "low"      "$SEV_LOW"  "$SMAX" "$(sev_color low)"      "$SEV_LOW"
 barcell "info"     "$SEV_INFO" "$SMAX" "$(sev_color info)"     "$SEV_INFO"
 printf '%b+%s+%s+%b\n' "$FG_CYA" "$DASH_L" "$DASH_R" "$RESET"
-cell "Fix critical" "$DIM" "$SCORE -> $P_CRIT  (+$L1)"
-cell "Fix +high"    "$DIM" "$P_CRIT -> $P_CH  (+$L2)"
-cell "Fix +medium"  "$DIM" "$P_CH -> $P_CHM  (+$L3)"
-cell "Fix +low"     "$DIM" "$P_CHM -> $P_CHML  (+$L4)"
-cell "Fix +info"    "$DIM" "$P_CHML -> $P_ALL  (+$L5)"
+cell "Fix critical" "$DIM" "$P_BASE -> $P_CRIT  ($(sgn "$L1"))"
+cell "Fix +high"    "$DIM" "$P_CRIT -> $P_CH  ($(sgn "$L2"))"
+cell "Fix +medium"  "$DIM" "$P_CH -> $P_CHM  ($(sgn "$L3"))"
+cell "Fix +low"     "$DIM" "$P_CHM -> $P_CHML  ($(sgn "$L4"))"
+cell "Fix +info"    "$DIM" "$P_CHML -> $P_ALL  ($(sgn "$L5"))"
 printf '%b+%s+%s+%b\n' "$FG_CYA" "$DASH_L" "$DASH_R" "$RESET"
 cell "Findings"     "$BOLD" "$COUNT"
 cell "Max severity" "$(sev_color "$MAX_SEV")" "$MAX_SEV"
 cell "Native exit"  "$([ "$NATIVE_CODE" = "0" ] && printf '%s' "$FG_GRN" || printf '%s' "$FG_RED")" "$NATIVE_CODE"
 printf '%b+%s+%s+%b\n' "$FG_CYA" "$DASH_L" "$DASH_R" "$RESET"
 printf '%b  Projected = estimate from trustabl'\''s own formula; listed fixes resolved, nothing new. Not a re-scan.%b\n' "$DIM" "$RESET"
+if [ "$P_BASE" != "$SCORE" ]; then
+  printf '%b  Projection baseline %s is the lowest-scoring surface; readiness %s is weighted across all of them.%b\n' "$DIM" "$P_BASE" "$SCORE" "$RESET"
+fi
 echo ""
 
 FAIL=0; REASONS=()
@@ -295,7 +329,13 @@ SUMMARY="trustabl-summary.md"
   echo ""
   echo "**\`$REPO\` · \`$BR\` · $COUNT findings**"
   echo ""
-  echo "Readiness Score goes from \`$SCORE\` → \`$P_ALL\` (**+$D_ALL**)"
+  echo "Projected readiness goes from \`$P_BASE\` → \`$P_ALL\` (**$(sgn "$D_ALL")**) if every finding is resolved."
+  echo ""
+  echo "_Estimate from trustabl's own formula with the listed fixes resolved, nothing new — not a re-scan._"
+  if [ "$P_BASE" != "$SCORE" ]; then
+    echo ""
+    echo "_Baseline \`$P_BASE\` is the lowest-scoring surface; the readiness score \`$SCORE\` is weighted across all of them._"
+  fi
   echo ""
   echo "### Findings by severity"
   echo ""
