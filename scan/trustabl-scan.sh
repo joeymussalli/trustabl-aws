@@ -30,6 +30,39 @@ BRANCH_INPUT="${BRANCH:-}"
 [ "${DEBUG:-false}" = "true" ] && set -x
 
 set -e
+
+# Resolve output paths through their existing parent directories so equivalent
+# spellings such as "report.json" and "./report.json" compare equal without
+# requiring GNU realpath (the wrapper also supports macOS).
+canonical_output_path() {
+  local path="$1" dir base resolved_dir
+
+  case "$path" in
+    */*)
+      dir="${path%/*}"
+      base="${path##*/}"
+      [ -n "$dir" ] || dir="/"
+      ;;
+    *)
+      dir="."
+      base="$path"
+      ;;
+  esac
+
+  if resolved_dir=$(cd "$dir" 2>/dev/null && pwd -P); then
+    printf '%s/%s\n' "${resolved_dir%/}" "$base"
+  else
+    # The later output redirection will report a missing parent directory. The
+    # literal fallback still catches identical invalid configurations here.
+    printf '%s\n' "$path"
+  fi
+}
+
+if [ "$(canonical_output_path "$JSON_FILE")" = "$(canonical_output_path "$SARIF_FILE")" ]; then
+  echo "Invalid output configuration: JSON_FILE and SARIF_FILE must use different paths" >&2
+  exit 2
+fi
+
 # trustabl reads TRUSTABL_RULES_REPO from the env (empty = its default).
 export TRUSTABL_RULES_REPO="$RULES_REPO"
 
