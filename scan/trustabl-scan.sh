@@ -61,7 +61,7 @@ if [ "$VER" = "latest" ]; then
 fi
 if [ -z "$VER" ] || [ "$VER" = "null" ]; then
   echo "Could not resolve trustabl version. Pin 'VERSION' to a tag, or set GITHUB_TOKEN."
-  exit 1
+  exit 2
 fi
 echo "Trustabl version: $VER"
 
@@ -70,12 +70,12 @@ VNUM="${VER#v}"
 case "$(uname -s)" in
   Linux)  OS=linux ;;
   Darwin) OS=darwin ;;
-  *) echo "Unsupported OS $(uname -s)"; exit 1 ;;
+  *) echo "Unsupported OS $(uname -s)"; exit 2 ;;
 esac
 case "$(uname -m)" in
   x86_64|amd64)  ARCH=amd64 ;;
   aarch64|arm64) ARCH=arm64 ;;
-  *) echo "Unsupported arch $(uname -m)"; exit 1 ;;
+  *) echo "Unsupported arch $(uname -m)"; exit 2 ;;
 esac
 ASSET="trustabl_${VNUM}_${OS}_${ARCH}.tar.gz"
 DEST="$(pwd)/.trustabl-bin"
@@ -94,7 +94,7 @@ if curl -fsSL "${AUTH[@]}" -o "$DEST/checksums.txt" \
     ACTUAL=$(sha256sum "$DEST/$ASSET" | awk '{print $1}')
     if [ "$EXPECTED" != "$ACTUAL" ]; then
       echo "Checksum mismatch for $ASSET: expected $EXPECTED, got $ACTUAL"
-      exit 1
+      exit 2
     fi
     echo "checksum verified: $ASSET"
   else
