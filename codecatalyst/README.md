@@ -9,10 +9,38 @@
 A gate failure exits non-zero -> the action fails. Findings surface in the
 **Reports** tab via the SARIF report (`trustabl.sarif`).
 
-**Alternative (quick) path:** instead of the native script, run the existing
-GitHub Action in a CodeCatalyst workflow via the GitHub Actions action
-(`trustabl/trustabl-action@v0`). Verify GitHub-Actions-in-CodeCatalyst support
-against current AWS docs.
+**Alternative path:** instead of the native script, run the existing GitHub
+Action inside a CodeCatalyst workflow. This is supported — the action
+identifier is `aws/github-actions-runner@v1`, and you paste the GitHub Action's
+`steps:` block into the CodeCatalyst action's `Steps:`:
+
+```yaml
+Actions:
+  Trustabl_Scan:
+    Identifier: aws/github-actions-runner@v1
+    Inputs:
+      Sources:
+        - WorkflowSource
+    Configuration:
+      Steps:
+        - name: Trustabl
+          uses: trustabl/trustabl-action@v0
+```
+
+It is not a drop-in, though, and AWS says "detailed migration steps are outside
+the scope of this guide":
+
+- **`${{ secrets.GITHUB_TOKEN }}` does not exist here.** CodeCatalyst has no
+  GitHub secrets context, and AWS's own porting example shows that line being
+  deleted. If the action wants a token for GitHub API rate limits, supply it
+  from a CodeCatalyst secret instead.
+- Anything the action relies on outside its `steps:` block has to be
+  re-expressed in CodeCatalyst's own YAML.
+- Reports and artifacts are configured on the CodeCatalyst action
+  (`Outputs.Reports`, `Outputs.Artifacts`), not by the GitHub Action.
+
+The native script above avoids all of that, which is why it is the documented
+path. See [GitHub Actions action YAML](https://docs.aws.amazon.com/codecatalyst/latest/userguide/github-action-ref.html).
 
 ## Quickstart — from zero (CodeCatalyst)
 
