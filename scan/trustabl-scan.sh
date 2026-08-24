@@ -133,12 +133,17 @@ BASE_ARGS=(scan "$TARGET")
 [ "$STRICT" = "true" ] && BASE_ARGS+=(--strict)
 [ -n "$RULES_REF" ] && BASE_ARGS+=(--rules-ref "$RULES_REF")
 
-# Run 1: SARIF (file emit).
-trustabl "${BASE_ARGS[@]}" --format sarif > "$SARIF_FILE"
+# One scan, both machine artifacts. --json-out/--sarif-out write their documents
+# independently of --format, so --format human additionally puts trustabl's own
+# summary in the build log rather than having a redirect swallow it.
+#
+# This used to be two full scans. That cost twice the time on every build, and
+# because rules are fetched at scan time the two runs could resolve different
+# rulesets — leaving the SARIF that gets uploaded and the JSON that decides the
+# gate describing two separate scans.
+trustabl "${BASE_ARGS[@]}" --format human \
+  --json-out "$JSON_FILE" --sarif-out "$SARIF_FILE"
 NATIVE_CODE=$?
-
-# Run 2: JSON (drives thresholds, log summary, dotenv).
-trustabl "${BASE_ARGS[@]}" --format json > "$JSON_FILE" || true
 SCAN_END=$(date -u +%Y-%m-%dT%H:%M:%S)
 
 # trustabl's overall_score is a float in [0.0, 1.0]; scale to [0,100] ints.
