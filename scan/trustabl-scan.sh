@@ -63,6 +63,12 @@ if [ -z "$VER" ] || [ "$VER" = "null" ]; then
   echo "Could not resolve trustabl version. Pin 'VERSION' to a tag, or set GITHUB_TOKEN."
   exit 1
 fi
+# Release tags are v-prefixed (v0.1.7). Accept VERSION=0.1.7 too — otherwise the
+# download URL is .../download/0.1.7/... which 404s against tag v0.1.7.
+case "$VER" in
+  v*) ;;
+  *) VER="v$VER" ;;
+esac
 echo "Trustabl version: $VER"
 
 # ---- install the release binary ----
