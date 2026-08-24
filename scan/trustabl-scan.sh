@@ -160,9 +160,24 @@ SCORE=$(awk -v s="$RAW_SCORE" 'BEGIN{ v = s*100; if (v<0) v=0; if (v>100) v=100;
 RISK=$(( 100 - SCORE ))
 COUNT=$(jq -r '.findings | length // 0' "$JSON_FILE" 2>/dev/null)
 : "${COUNT:=0}"
-MAX_SEV=$(jq -r '
-  [.findings[].severity] as $s
+# Severity strings are normalised (trimmed + lowercased) before they are
+# bucketed, so "CRITICAL" and " High " land in critical/high. Anything still
+# unrecognised after normalising — a new upstream severity, "moderate", a null
+# — becomes "unknown" rather than silently falling through to the lowest
+# bucket. We cannot know how bad an unknown severity is, so it is escalated to
+# critical for gating: the script fails closed on input it did not understand
+# instead of quietly picking the most permissive reading.
+SEV_NORM='
+  def norm: (. // "") | tostring | ascii_downcase
+    | sub("^[[:space:]]+";"") | sub("[[:space:]]+$";"")
+    | if . == "critical" or . == "high" or . == "medium" or . == "low" or . == "info"
+      then . else "unknown" end;
+  def sevs: [ .findings[]?.severity | norm ];
+'
+MAX_SEV=$(jq -r "$SEV_NORM"'
+  sevs as $s
   | if ($s|length)==0 then "none"
+    elif any($s[]; .=="unknown")  then "unknown"
     elif any($s[]; .=="critical") then "critical"
     elif any($s[]; .=="high")     then "high"
     elif any($s[]; .=="medium")   then "medium"
@@ -170,6 +185,12 @@ MAX_SEV=$(jq -r '
     else "info" end
 ' "$JSON_FILE" 2>/dev/null)
 : "${MAX_SEV:=none}"
+if [ "$MAX_SEV" = "unknown" ]; then
+  BAD_SEVS=$(jq -r "$SEV_NORM"'[ .findings[]?.severity | select(norm=="unknown") | tostring ] | unique | join(", ")' "$JSON_FILE" 2>/dev/null)
+  echo "WARNING: unrecognised finding severity from the scanner: ${BAD_SEVS:-?}"
+  echo "WARNING: treating unknown severities as critical (failing closed) — max severity reported as critical"
+  MAX_SEV=critical
+fi
 
 # ---- dotenv outputs (downstream steps can `source trustabl.env`) ----
 {
@@ -223,8 +244,22 @@ fi
 [ "$P_CHM"  -lt "$P_CH"    ] 2>/dev/null && P_CHM="$P_CH"
 [ "$P_CHML" -lt "$P_CHM"   ] 2>/dev/null && P_CHML="$P_CHM"
 [ "$P_ALL"  -lt "$P_CHML"  ] 2>/dev/null && P_ALL="$P_CHML"
-read SEV_CRIT SEV_HIGH SEV_MED SEV_LOW SEV_INFO < <(jq -r '[.findings[]?.severity] as $s | "\([$s[]|select(.=="critical")]|length)\t\([$s[]|select(.=="high")]|length)\t\([$s[]|select(.=="medium")]|length)\t\([$s[]|select(.=="low")]|length)\t\([$s[]|select(.=="info")]|length)"' "$JSON_FILE" 2>/dev/null | tr -d '\r')
-: "${SEV_CRIT:=0}"; : "${SEV_HIGH:=0}"; : "${SEV_MED:=0}"; : "${SEV_LOW:=0}"; : "${SEV_INFO:=0}"
+# Same normalisation as MAX_SEV, so the breakdown and the gate agree. Every
+# finding lands in exactly one bucket (unrecognised ones in "unknown"), so the
+# rows always add up to the Findings total.
+read SEV_CRIT SEV_HIGH SEV_MED SEV_LOW SEV_INFO SEV_UNKNOWN < <(jq -r "$SEV_NORM"'
+  sevs as $s
+  | ["critical","high","medium","low","info","unknown"]
+  | map(. as $b | [ $s[] | select(. == $b) ] | length) | @tsv' "$JSON_FILE" 2>/dev/null | tr -d '\r')
+: "${SEV_CRIT:=0}"; : "${SEV_HIGH:=0}"; : "${SEV_MED:=0}"; : "${SEV_LOW:=0}"; : "${SEV_INFO:=0}"; : "${SEV_UNKNOWN:=0}"
+# Belt and braces: if the buckets somehow do not account for every finding, put
+# the remainder in "unknown" rather than printing a breakdown that contradicts
+# the Findings count.
+SEV_SUM=$(( SEV_CRIT + SEV_HIGH + SEV_MED + SEV_LOW + SEV_INFO + SEV_UNKNOWN ))
+if [ "${COUNT:-0}" -gt "$SEV_SUM" ] 2>/dev/null; then
+  echo "WARNING: severity breakdown covered $SEV_SUM of $COUNT findings — counting the rest as unknown"
+  SEV_UNKNOWN=$(( SEV_UNKNOWN + COUNT - SEV_SUM ))
+fi
 
 # ── Pretty box-drawn console report ───────────────────────────
 BOLD=$'\e[1m'; DIM=$'\e[2m'; RESET=$'\e[0m'
@@ -251,7 +286,7 @@ sgn() { printf '%+d' "$1"; }
 D_ALL=$(( P_ALL - P_BASE ))
 L1=$(( P_CRIT - P_BASE )); L2=$(( P_CH - P_CRIT )); L3=$(( P_CHM - P_CH )); L4=$(( P_CHML - P_CHM )); L5=$(( P_ALL - P_CHML ))
 SUB=$(trunc "$REPO  -  $BR  -  $COUNT findings" 56)
-SMAX=1; for n in "$SEV_CRIT" "$SEV_HIGH" "$SEV_MED" "$SEV_LOW" "$SEV_INFO"; do [ "$n" -gt "$SMAX" ] 2>/dev/null && SMAX="$n"; done
+SMAX=1; for n in "$SEV_CRIT" "$SEV_HIGH" "$SEV_MED" "$SEV_LOW" "$SEV_INFO" "$SEV_UNKNOWN"; do [ "$n" -gt "$SMAX" ] 2>/dev/null && SMAX="$n"; done
 
 echo ""
 printf '%b+%s+%b\n' "$FG_CYA" "$DASH_TOP" "$RESET"
@@ -270,6 +305,11 @@ barcell "high"     "$SEV_HIGH" "$SMAX" "$(sev_color high)"     "$SEV_HIGH"
 barcell "medium"   "$SEV_MED"  "$SMAX" "$(sev_color medium)"   "$SEV_MED"
 barcell "low"      "$SEV_LOW"  "$SMAX" "$(sev_color low)"      "$SEV_LOW"
 barcell "info"     "$SEV_INFO" "$SMAX" "$(sev_color info)"     "$SEV_INFO"
+# Only shown when the scanner sent something we could not classify; these are
+# gated as critical, so colour them like critical.
+if [ "$SEV_UNKNOWN" -gt 0 ] 2>/dev/null; then
+  barcell "unknown"  "$SEV_UNKNOWN" "$SMAX" "$(sev_color critical)" "$SEV_UNKNOWN"
+fi
 printf '%b+%s+%s+%b\n' "$FG_CYA" "$DASH_L" "$DASH_R" "$RESET"
 cell "Fix critical" "$DIM" "$P_BASE -> $P_CRIT  ($(sgn "$L1"))"
 cell "Fix +high"    "$DIM" "$P_CRIT -> $P_CH  ($(sgn "$L2"))"
@@ -346,6 +386,12 @@ SUMMARY="trustabl-summary.md"
   echo "| medium | $SEV_MED |"
   echo "| low | $SEV_LOW |"
   echo "| info | $SEV_INFO |"
+  if [ "$SEV_UNKNOWN" -gt 0 ] 2>/dev/null; then
+    echo "| unknown | $SEV_UNKNOWN |"
+    echo ""
+    echo "> ⚠️ $SEV_UNKNOWN finding(s) had a severity this script does not"
+    echo "> recognise (${BAD_SEVS:-unparseable}). They are gated as \`critical\`."
+  fi
   echo ""
   echo "| Metric | Value |"
   echo "|---|---|"
