@@ -37,6 +37,8 @@ test_clean_scan_passes() {
   assert_eq "risk" "$(env_var "$ws" TRUSTABL_RISK_SCORE)" 0
   assert_eq "findings count" "$(env_var "$ws" TRUSTABL_FINDINGS_COUNT)" 0
   assert_eq "native exit" "$(env_var "$ws" TRUSTABL_EXIT_CODE)" 0
+  # The engine emits `"findings": null` — not [] — when it finds nothing.
+  assert_eq "max severity" "$(env_var "$ws" TRUSTABL_MAX_SEVERITY)" none
 }
 
 test_findings_scan_reports_engine_score() {
