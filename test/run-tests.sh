@@ -157,6 +157,23 @@ test_the_branch_label_is_reported() {
   assert_contains "report" "$SCAN_OUT" "Trustabl scanning branch: release/1.2"
 }
 
+test_an_empty_scan_result_is_not_scored() {
+  local ws; ws="$(workspace)"
+  : > "$ws/empty.json"
+  run_scan "$ws" STUB_JSON="$ws/empty.json"
+  assert_eq "exit code" "$SCAN_EXIT" 2
+  assert_contains "message" "$SCAN_OUT" "no usable JSON ScanResult"
+  assert_not_contains "report" "$SCAN_OUT" "Successfully passed scanning"
+}
+
+test_a_truncated_scan_result_is_not_scored() {
+  local ws; ws="$(workspace)"
+  head -c 400 "$FIXTURE_DIR/findings.json" > "$ws/truncated.json"
+  run_scan "$ws" STUB_JSON="$ws/truncated.json"
+  assert_eq "exit code" "$SCAN_EXIT" 2
+  assert_contains "message" "$SCAN_OUT" "no usable JSON ScanResult"
+}
+
 # ---- run ----
 
 it "a clean scan passes and reports a perfect readiness"        test_clean_scan_passes
@@ -174,5 +191,7 @@ it "DETECTORS, STRICT and RULES_REF reach the engine"           test_scan_flags_
 it "a tampered release aborts before the engine runs"           test_a_tampered_release_aborts_before_the_engine_runs
 it "a pinned VERSION skips the latest-release lookup"           test_a_pinned_version_skips_the_latest_lookup
 it "the branch label is reported"                               test_the_branch_label_is_reported
+it "an empty ScanResult is not scored"                          test_an_empty_scan_result_is_not_scored
+it "a truncated ScanResult is not scored"                       test_a_truncated_scan_result_is_not_scored
 
 summarize
