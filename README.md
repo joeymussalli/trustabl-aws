@@ -19,7 +19,7 @@ One scanner (`scan/trustabl-scan.sh`), two integrations:
 | `TARGET` | `.` | Path or GitHub URL to scan. |
 | `VERSION` | `latest` | trustabl release tag (e.g. `v0.5.0`) or `latest`. |
 | `DETECTORS` | _(all)_ | Comma-separated SDK subset (`claude_sdk,openai_sdk,google_adk,...`). |
-| `STRICT` | `false` | Fail on any finding. |
+| `STRICT` | `false` | Fail on any finding of `low` or above (`info` never gates), and on a scan that found no agent surfaces at all. |
 | `RULES_REF` | _(default)_ | Pin a `trustabl-rules` git ref. |
 | `RULES_REPO` | _(default)_ | Override the `trustabl-rules` source repo. |
 | `SARIF_FILE` | `trustabl.sarif` | SARIF output path. |
