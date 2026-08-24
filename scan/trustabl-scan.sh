@@ -87,22 +87,34 @@ curl -fSL -H "Accept: application/octet-stream" "${AUTH[@]}" \
   "https://github.com/trustabl/trustabl/releases/download/${VER}/${ASSET}"
 
 # ---- verify checksum (sha256 against the release checksums.txt) ----
-if curl -fsSL "${AUTH[@]}" -o "$DEST/checksums.txt" \
-     "https://github.com/trustabl/trustabl/releases/download/${VER}/checksums.txt" 2>/dev/null; then
-  EXPECTED=$(grep " ${ASSET}\$" "$DEST/checksums.txt" | awk '{print $1}' | head -1)
-  if [ -n "$EXPECTED" ]; then
-    ACTUAL=$(sha256sum "$DEST/$ASSET" | awk '{print $1}')
-    if [ "$EXPECTED" != "$ACTUAL" ]; then
-      echo "Checksum mismatch for $ASSET: expected $EXPECTED, got $ACTUAL"
-      exit 1
-    fi
-    echo "checksum verified: $ASSET"
-  else
-    echo "WARNING: $ASSET not listed in checksums.txt — skipping verification"
-  fi
-else
-  echo "WARNING: could not fetch checksums.txt — skipping verification"
+# Verification is mandatory. As a warning it skipped exactly the cases that
+# matter: a checksums.txt that cannot be fetched, and an asset missing from the
+# one that can — the two shapes a substituted release takes. Everything the
+# scanner then reports comes from a binary nobody vouched for.
+#
+# These exit 2, not 1. A failed verification is not a gate result; per
+# docs/EVALUATION.md the scan did not complete and its output should not be
+# trusted. A checksum mismatch exits 2 for the same reason.
+if ! curl -fsSL "${AUTH[@]}" -o "$DEST/checksums.txt" \
+     "https://github.com/trustabl/trustabl/releases/download/${VER}/checksums.txt"; then
+  echo "Could not fetch checksums.txt for ${VER}; refusing to run an unverified trustabl binary." >&2
+  exit 2
 fi
+
+# Exact field match: the asset name is the whole second column, never a suffix
+# of some other entry.
+EXPECTED=$(awk -v asset="$ASSET" '$2 == asset { print $1; exit }' "$DEST/checksums.txt")
+if [ -z "$EXPECTED" ]; then
+  echo "$ASSET is not listed in checksums.txt for ${VER}; refusing to run an unverified trustabl binary." >&2
+  exit 2
+fi
+
+ACTUAL=$(sha256sum "$DEST/$ASSET" | awk '{print $1}')
+if [ "$EXPECTED" != "$ACTUAL" ]; then
+  echo "Checksum mismatch for $ASSET: expected $EXPECTED, got $ACTUAL" >&2
+  exit 2
+fi
+echo "checksum verified: $ASSET"
 
 tar -xzf "$DEST/$ASSET" -C "$DEST"
 export PATH="$DEST:$PATH"

@@ -139,9 +139,30 @@ test_a_tampered_release_aborts_before_the_engine_runs() {
   # Rewrite the archive after checksums.txt was generated over the original.
   printf 'tampered' >> "$ws/release/$(asset_name)"
   run_scan "$ws" STUB_ARGS_LOG="$ws/argv.log"
-  assert_eq "exit code" "$SCAN_EXIT" 1
+  assert_eq "exit code" "$SCAN_EXIT" 2
   assert_contains "reason" "$SCAN_OUT" "Checksum mismatch"
   [ -f "$ws/argv.log" ] && fail "the engine ran despite a checksum mismatch"
+}
+
+test_an_unfetchable_checksums_file_aborts() {
+  local ws; ws="$(workspace)"
+  rm -f "$ws/release/checksums.txt"
+  run_scan "$ws" STUB_ARGS_LOG="$ws/argv.log"
+  assert_eq "exit code" "$SCAN_EXIT" 2
+  assert_contains "reason" "$SCAN_OUT" "refusing to run an unverified trustabl binary"
+  [ -f "$ws/argv.log" ] && fail "the engine ran without a verified checksum"
+}
+
+test_an_asset_missing_from_checksums_aborts() {
+  local ws; ws="$(workspace)"
+  # A checksums.txt that lists some other asset — the release we are about to
+  # run is not covered by it.
+  printf '%s  %s\n' "$(sha256_of "$ws/release/$(asset_name)")" "trustabl_0.0.0_other_arch.tar.gz" \
+    > "$ws/release/checksums.txt"
+  run_scan "$ws" STUB_ARGS_LOG="$ws/argv.log"
+  assert_eq "exit code" "$SCAN_EXIT" 2
+  assert_contains "reason" "$SCAN_OUT" "is not listed in checksums.txt"
+  [ -f "$ws/argv.log" ] && fail "the engine ran without a verified checksum"
 }
 
 test_a_pinned_version_skips_the_latest_lookup() {
@@ -172,6 +193,8 @@ it "JSON_FILE and SARIF_FILE relocate the artifacts"            test_output_path
 it "the summary records the severity breakdown"                 test_summary_records_the_severity_breakdown
 it "DETECTORS, STRICT and RULES_REF reach the engine"           test_scan_flags_reach_the_engine
 it "a tampered release aborts before the engine runs"           test_a_tampered_release_aborts_before_the_engine_runs
+it "an unfetchable checksums.txt aborts"                        test_an_unfetchable_checksums_file_aborts
+it "an asset missing from checksums.txt aborts"                 test_an_asset_missing_from_checksums_aborts
 it "a pinned VERSION skips the latest-release lookup"           test_a_pinned_version_skips_the_latest_lookup
 it "the branch label is reported"                               test_the_branch_label_is_reported
 
