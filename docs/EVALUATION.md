@@ -28,6 +28,18 @@ signed channel, so a scan picks up new detections without upgrading the binary.
 well. You are checking whether the findings are real, not whether the build
 passes.
 
+> Report-only is **not** the default, and it is not something you get by leaving
+> the thresholds unset. `trustabl` itself exits non-zero on any finding at medium
+> or above, and the scanner script honours that regardless of
+> `SEVERITY_THRESHOLD`. To get a genuinely advisory run, append `|| true` to the
+> command that invokes the script:
+>
+> - CodeBuild: `- bash "$CODEBUILD_SRC_DIR/scan/trustabl-scan.sh" || true`
+> - CodeCatalyst: `- Run: bash scan/trustabl-scan.sh || true`
+>
+> Remember to take it back off at step 4 — with `|| true` in place nothing can
+> ever fail the build, including a scanner that did not run.
+
 **2. Read the inventory before the findings.** If the tool and agent counts look
 wrong, the scan is pointed at the wrong path or your SDK is not being detected.
 A score computed over the wrong inventory is meaningless.
@@ -102,12 +114,21 @@ Projections come from the same formula, not a re-scan.
 
 Any one of these can fail the run.
 
-| Control | Effect |
-|---|---|
-| default | Fails on any finding at medium or above |
-| severity threshold | Fails when the worst finding reaches the level you set |
-| risk score threshold | Fails when risk reaches a number you set |
-| strict | Lowers the bar to any finding of low or above |
+| Control | Effect | Whose behaviour |
+|---|---|---|
+| default | Fails on any finding at medium or above | the `trustabl` binary |
+| severity threshold | Fails when the worst finding reaches the level you set | this script |
+| risk score threshold | Fails when risk reaches a number you set | this script |
+| strict | Lowers the bar to any finding of low or above | the `trustabl` binary |
+
+The distinction in the last column matters. The two thresholds are **additional**
+gates layered on top; neither can relax the binary's own medium-and-above
+default. Setting `SEVERITY_THRESHOLD: critical` does not permit high findings —
+it adds a second condition to a build that the binary already failed.
+
+Only `|| true` on the invoking command turns gating off entirely, and it turns
+off *everything*, including the failure the script raises when the scan did not
+complete.
 
 A common progression is report-only, then `high`, then `medium` once the backlog
 is clear.
@@ -136,8 +157,11 @@ Vendor `scan/` plus the config for your platform into your repo, then set
 variables on the CodeBuild project or CodeCatalyst workflow:
 
 ```yaml
-SEVERITY_THRESHOLD: high             # report-only: omit this
+SEVERITY_THRESHOLD: high             # an ADDITIONAL gate, not a relaxation
 ```
+
+Omitting it does not give you report-only — see [Gating](#gating). For an
+advisory run, append `|| true` to the command that invokes the script.
 
 Variables are **UPPER_SNAKE**: `SEVERITY_THRESHOLD`, `RISK_SCORE_THRESHOLD`,
 `STRICT`, `DETECTORS`, `VERSION`.
