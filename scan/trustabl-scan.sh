@@ -94,7 +94,7 @@ if curl -fsSL "${AUTH[@]}" -o "$DEST/checksums.txt" \
     ACTUAL=$(sha256sum "$DEST/$ASSET" | awk '{print $1}')
     if [ "$EXPECTED" != "$ACTUAL" ]; then
       echo "Checksum mismatch for $ASSET: expected $EXPECTED, got $ACTUAL"
-      exit 2
+      exit 1
     fi
     echo "checksum verified: $ASSET"
   else
