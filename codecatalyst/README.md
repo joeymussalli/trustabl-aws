@@ -42,8 +42,14 @@ The workflow triggers on push to `main`. CodeCatalyst → your project →
 tab (SARIF), and **fails the run on any medium-or-higher finding**.
 
 > **Report-only (don't block)?** trustabl fails on medium+ by default. To make
-> it advisory, change the workflow `Run:` line to:
-> `- Run: bash scan/trustabl-scan.sh || true`
+> *findings* advisory while still failing on a broken scan, change the workflow
+> `Run:` line to:
+> `- Run: bash scan/trustabl-scan.sh || [ $? -eq 1 ]`
+>
+> Not `|| true`. Exit 1 means the scan ran and gated; exit 2 means it did not
+> run — a missing tool, an unreachable release, unusable rules. `|| true`
+> swallows both, so a workflow that never scans anything reports the same green
+> as one that scans clean. See [exit codes](../docs/EVALUATION.md#exit-codes).
 
 ### CLI?
 CodeCatalyst workflows are **file-driven** — there's no separate CLI to create
