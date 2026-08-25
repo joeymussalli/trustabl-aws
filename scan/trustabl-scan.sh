@@ -63,6 +63,13 @@ if [ -z "$VER" ] || [ "$VER" = "null" ]; then
   echo "Could not resolve trustabl version. Pin 'VERSION' to a tag, or set GITHUB_TOKEN."
   exit 2
 fi
+# One path segment only. A slash, '..', or URL metacharacter in a pin or in
+# tag_name from /releases/latest would change
+# /releases/download/${VER}/${ASSET} and the local -o filename.
+if [[ "$VER" == */* || "$VER" == *\\* || "$VER" == *..* || "$VER" == *[[:space:]]* || "$VER" == *:* || "$VER" == *@* ]]; then
+  echo "Invalid trustabl version. Pin VERSION to a single release tag."
+  exit 2
+fi
 echo "Trustabl version: $VER"
 
 # ---- install the release binary ----
