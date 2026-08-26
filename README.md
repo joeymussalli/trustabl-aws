@@ -13,6 +13,16 @@ One scanner (`scan/trustabl-scan.sh`), two integrations:
 | **AWS CodePipeline** | CodeBuild action using `codepipeline/buildspec.yml` | [codepipeline/README.md](codepipeline/README.md) |
 | **Amazon CodeCatalyst** | Workflow action (`codecatalyst/workflows/trustabl.yaml`) | [codecatalyst/README.md](codecatalyst/README.md) |
 
+## Demo
+
+A sixty-second walkthrough: install it, gate it, run the first scan, and the
+exit code CI reads.
+
+[▶ Watch the demo](https://raw.githubusercontent.com/trustabl/trustabl-aws/main/assets/trustabl-demo.mp4) · [`assets/trustabl-demo.mp4`](assets/trustabl-demo.mp4)
+
+Evaluating this against other tools? [docs/EVALUATION.md](docs/EVALUATION.md)
+covers how to trial it and how to read what it reports.
+
 ## Inputs (environment variables)
 
 | Var | Default | Description |
