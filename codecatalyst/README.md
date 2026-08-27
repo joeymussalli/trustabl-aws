@@ -42,8 +42,9 @@ workflow file — the workflow is committed to the repository.
 The workflow triggers on push to `main`. CodeCatalyst → your project →
 **CI/CD → Workflows** shows the run. It downloads the trustabl binary
 (sha256-verified), scans the checkout, uploads `trustabl.json` /
-`trustabl.sarif` / `trustabl-summary.md`, surfaces findings in the **Reports**
-tab (SARIF), and **fails the run on any medium-or-higher finding**.
+`trustabl.sarif` / `trustabl-summary.md` / `trustabl.env`, surfaces findings in
+the **Reports** tab (SARIF), and **fails the run on any medium-or-higher
+finding**.
 
 > **Report-only (don't block)?** trustabl fails on medium+ by default. To make
 > it advisory, change the workflow `Run:` line to:
