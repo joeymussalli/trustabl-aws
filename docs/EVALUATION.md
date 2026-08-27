@@ -159,7 +159,8 @@ A gate failure exits non-zero, which fails the CodeBuild action and therefore th
 pipeline stage.
 
 `trustabl.env` exposes `TRUSTABL_EXIT_CODE`, `TRUSTABL_READINESS_SCORE`,
-`TRUSTABL_RISK_SCORE` and `TRUSTABL_MAX_SEVERITY` for downstream steps.
+`TRUSTABL_RISK_SCORE`, `TRUSTABL_MAX_SEVERITY` and `TRUSTABL_FINDINGS_COUNT`
+for downstream steps.
 
 For a trial, run the CodeBuild project on its own before wiring it into a
 pipeline. It exercises the same scan without gating anything real.
