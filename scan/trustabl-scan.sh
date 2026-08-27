@@ -96,14 +96,26 @@ AUTH=()
 
 # ---- resolve branch label ----
 # CodeBuild gives refs/heads/<branch> in CODEBUILD_WEBHOOK_HEAD_REF; CodeCatalyst
-# exposes none reliably, so fall back to git on the checkout.
+# exposes none reliably, so fall back to the checkout's current branch.
+# `show-ref --verify refs/heads/main` only asks whether that ref exists — almost
+# every repo has one — so it labeled feature-branch checkouts as "main".
 BR="$BRANCH_INPUT"
 if [ -z "$BR" ]; then BR="${CODEBUILD_WEBHOOK_HEAD_REF:-}"; BR="${BR#refs/heads/}"; fi
 if [ -z "$BR" ]; then
   if git -C "$TARGET" rev-parse --git-dir >/dev/null 2>&1; then
-    if   git -C "$TARGET" show-ref --verify --quiet refs/heads/main;   then BR=main
-    elif git -C "$TARGET" show-ref --verify --quiet refs/heads/master; then BR=master
-    else BR=$(git -C "$TARGET" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+    BR=$(git -C "$TARGET" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+    # CodeBuild often checks out a detached commit. Label it main/master only
+    # when HEAD *is* that branch's tip, not merely because the ref exists.
+    if [ "$BR" = "HEAD" ] || [ -z "$BR" ]; then
+      HEAD_SHA=$(git -C "$TARGET" rev-parse HEAD 2>/dev/null || true)
+      MAIN_SHA=$(git -C "$TARGET" rev-parse --verify refs/heads/main 2>/dev/null || true)
+      MASTER_SHA=$(git -C "$TARGET" rev-parse --verify refs/heads/master 2>/dev/null || true)
+      BR=""
+      if [ -n "$HEAD_SHA" ] && [ -n "$MAIN_SHA" ] && [ "$HEAD_SHA" = "$MAIN_SHA" ]; then
+        BR=main
+      elif [ -n "$HEAD_SHA" ] && [ -n "$MASTER_SHA" ] && [ "$HEAD_SHA" = "$MASTER_SHA" ]; then
+        BR=master
+      fi
     fi
   fi
   [ -z "$BR" ] && BR=unknown
