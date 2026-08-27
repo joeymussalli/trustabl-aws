@@ -54,8 +54,14 @@ prints the readiness report, uploads `trustabl.json` / `trustabl.sarif` /
 any finding is medium-or-higher** — so the pipeline stops on unsafe agent code.
 
 > **Want report-only (don't block the pipeline)?** trustabl fails on medium+ by
-> default. To make it advisory, change the build command in your buildspec to:
-> `- bash "$CODEBUILD_SRC_DIR/scan/trustabl-scan.sh" || true`
+> default. To make *findings* advisory while still failing on a broken scan,
+> change the build command in your buildspec to:
+> `- bash "$CODEBUILD_SRC_DIR/scan/trustabl-scan.sh" || [ $? -eq 1 ]`
+>
+> Not `|| true`. Exit 1 means the scan ran and gated; exit 2 means it did not
+> run — a missing tool, an unreachable release, unusable rules. `|| true`
+> swallows both, so a pipeline that never scans anything reports the same green
+> as one that scans clean. See [exit codes](../docs/EVALUATION.md#exit-codes).
 
 ### CLI (alternative to steps 2–3)
 After vendoring (step 1), replace `<you>/<repo>` and `<acct>`:
