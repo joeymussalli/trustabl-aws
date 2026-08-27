@@ -260,8 +260,14 @@ printf '%b+%s+%s+%b\n' "$FG_CYA" "$DASH_L" "$DASH_R" "$RESET"
 printf '%b  Projected = estimate from trustabl'\''s own formula; listed fixes resolved, nothing new. Not a re-scan.%b\n' "$DIM" "$RESET"
 echo ""
 
-FAIL=0; REASONS=()
-if [ "$NATIVE_CODE" = "2" ]; then FAIL=1; REASONS+=("scanner error (exit 2)"); fi
+# EXIT_CODE is the code this wrapper will exit with. docs/EVALUATION.md draws a
+# hard line between the two failure kinds: exit 1 is "a result, not a
+# malfunction", while exit 2 means "the scan did not complete and the output
+# should not be trusted". Collapsing a scanner error into 1 makes a broken scan
+# indistinguishable from a gate failure to CodeBuild and CodeCatalyst, so a
+# native exit 2 is propagated as 2.
+FAIL=0; EXIT_CODE=1; REASONS=()
+if [ "$NATIVE_CODE" = "2" ]; then FAIL=1; EXIT_CODE=2; REASONS+=("scanner error (exit 2)"); fi
 if [ "$NATIVE_CODE" = "1" ]; then FAIL=1; REASONS+=("trustabl gated (medium+ or --strict)"); fi
 
 RST="$RISK_THRESHOLD"
@@ -313,7 +319,7 @@ SUMMARY="trustabl-summary.md"
 if [ "$FAIL" = "1" ]; then
   printf '%b\n' "${RED}✗ Failed due to: ${REASONS[*]}${RESET}"
   echo "### ❌ Failed — ${REASONS[*]}" >> "$SUMMARY"
-  exit 1
+  exit "$EXIT_CODE"
 fi
 
 printf '%b\n' "${GREEN}✓ Successfully passed scanning${RESET}"
