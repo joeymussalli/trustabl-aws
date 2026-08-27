@@ -13,7 +13,7 @@
 # Inputs are environment variables (all optional; sensible defaults):
 #   TARGET VERSION DETECTORS STRICT RULES_REF RULES_REPO
 #   SARIF_FILE JSON_FILE RISK_SCORE_THRESHOLD SEVERITY_THRESHOLD
-#   BRANCH GITHUB_TOKEN DEBUG
+#   BRANCH GITHUB_TOKEN DEBUG TRUSTABL_BIN_DIR
 
 # ---- inputs (env, with defaults) ----
 TARGET="${TARGET:-.}"
@@ -118,7 +118,19 @@ case "$(uname -m)" in
   *) echo "Unsupported arch $(uname -m)"; exit 2 ;;
 esac
 ASSET="trustabl_${VNUM}_${OS}_${ARCH}.tar.gz"
-DEST="$(pwd)/.trustabl-bin"
+# Keep the toolchain outside the tree we are about to analyse. With the default
+# TARGET=".", a download dir under $(pwd) puts the tarball and everything it
+# unpacks inside the scan target, so trustabl inventories its own release
+# payload alongside the user's code. TRUSTABL_BIN_DIR overrides if a caller
+# needs a fixed location (e.g. to cache it between runs).
+if [ -n "${TRUSTABL_BIN_DIR:-}" ]; then
+  DEST="$TRUSTABL_BIN_DIR"
+else
+  DEST="$(mktemp -d 2>/dev/null || echo "${TMPDIR:-/tmp}/trustabl-bin.$$")"
+  # Only clean up what we created — a caller-pinned dir may be a deliberate
+  # cache. Best-effort; harmless if the runner discards the workspace anyway.
+  trap 'rm -rf "$DEST"' EXIT
+fi
 mkdir -p "$DEST"
 # The release download URL (Accept: application/octet-stream) increments the
 # upstream trustabl/trustabl per-asset download_count.

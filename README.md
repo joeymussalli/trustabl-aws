@@ -38,6 +38,7 @@ covers how to trial it and how to read what it reports.
 | `RISK_SCORE_THRESHOLD` | `0` | Fail when risk (100 − readiness) >= N. `0` disables. |
 | `SEVERITY_THRESHOLD` | `none` | Fail when any finding >= severity (`none/low/medium/high/critical`). |
 | `GITHUB_TOKEN` | _(none)_ | Optional — avoids GitHub's 60 req/hr anonymous rate limit. |
+| `TRUSTABL_BIN_DIR` | _(temp dir)_ | Where to download/unpack the binary. Must sit outside `TARGET`. |
 
 ## Outputs
 
