@@ -27,6 +27,29 @@ JSON_FILE="${JSON_FILE:-trustabl.json}"
 RISK_THRESHOLD="${RISK_SCORE_THRESHOLD:-0}"
 SEV_THRESHOLD="${SEVERITY_THRESHOLD:-none}"
 BRANCH_INPUT="${BRANCH:-}"
+
+# ---- preflight: required commands ----
+# The CodePipeline buildspec's install phase ends in `|| true` and hides its
+# output, and the CodeCatalyst workflow installs nothing at all, so a build
+# image can reach this point missing a dependency with nothing having said so.
+# Naming the missing tool here beats the alternative: the first symptom is
+# otherwise a downstream guard blaming the scan result for a missing binary.
+#
+# `git` is deliberately not required — every call is guarded, and without it
+# the script degrades to BR=unknown and REPO=$TARGET. `tr` and `seq` are left
+# out because they ship in coreutils alongside `head`.
+MISSING=""
+for _cmd in curl jq tar awk grep head uname; do
+  command -v "$_cmd" >/dev/null 2>&1 || MISSING="$MISSING $_cmd"
+done
+if [ -n "$MISSING" ]; then
+  echo "Missing required command(s):$MISSING"
+  echo "Install them on the build image before scanning; the CodeBuild image"
+  echo "aws/codebuild/standard:7.0 ships all of them."
+  exit 2
+fi
+unset _cmd MISSING
+
 [ "${DEBUG:-false}" = "true" ] && set -x
 
 set -e
