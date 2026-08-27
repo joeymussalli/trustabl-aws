@@ -108,7 +108,7 @@ Any one of these can fail the run.
 | default | Fails on any finding at medium or above |
 | severity threshold | Fails when the worst finding reaches the level you set |
 | risk score threshold | Fails when risk reaches a number you set |
-| strict | Lowers the bar to any finding of low or above |
+| strict | Lowers the bar to any finding of low or above, **and fails a scan that found no agent surfaces at all** |
 
 A common progression is report-only, then `high`, then `medium` once the backlog
 is clear.
@@ -128,6 +128,10 @@ Worth knowing before you evaluate it, so the result is not oversold:
   inventory. The report states what it parsed and what it skipped — read it.
 - **An empty result is not a pass.** If nothing was found, verify the scanned
   path and that your SDK is supported before concluding the repo is clean.
+  `STRICT=true` enforces this for you: a scan that discovered no tools, agents,
+  subagents or skills exits 1 even with zero findings, on the grounds that a
+  mistyped `TARGET` or a moved source tree would otherwise leave the gate green
+  indefinitely — and nobody investigates a passing build.
 
 ---
 

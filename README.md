@@ -33,7 +33,7 @@ covers how to trial it and how to read what it reports.
 | `TARGET` | `.` | Path or GitHub URL to scan. |
 | `VERSION` | `latest` | trustabl release tag (e.g. `v0.1.7`) or `latest`. A pin without the `v` (`0.1.7`) is accepted. |
 | `DETECTORS` | _(all)_ | Comma-separated SDK subset (`claude_sdk,openai_sdk,google_adk,...`). |
-| `STRICT` | `false` | Fail on any finding. |
+| `STRICT` | `false` | Fail on any finding of `low` or above (`info` never gates), and on a scan that found no agent surfaces at all. |
 | `RULES_REF` | _(default)_ | Pin a `trustabl-rules` git ref. |
 | `RULES_REPO` | _(default)_ | Override the `trustabl-rules` source repo. |
 | `SARIF_FILE` | `trustabl.sarif` | SARIF output path. |
