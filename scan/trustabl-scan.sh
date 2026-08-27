@@ -324,15 +324,35 @@ FAIL=0; EXIT_CODE=1; REASONS=()
 if [ "$NATIVE_CODE" = "2" ]; then FAIL=1; EXIT_CODE=2; REASONS+=("scanner error (exit 2)"); fi
 if [ "$NATIVE_CODE" = "1" ]; then FAIL=1; REASONS+=("trustabl gated (medium+ or --strict)"); fi
 
-RST="$RISK_THRESHOLD"
-if [ "$RST" -gt 0 ] 2>/dev/null && [ "$RISK" -ge "$RST" ]; then
+# Surrounding whitespace is trivially easy to introduce in a CI variable and
+# must not change how a threshold is read. `[` already tolerated it (" 50"
+# compared as 50); trimming just makes the guards below see the same string.
+trim_ws() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
+
+# A malformed risk threshold used to fail OPEN: `[ abc -gt 0 ]` exits 2, the
+# `2>/dev/null` swallowed it, the whole condition went false and the risk gate
+# silently disappeared. Reject non-integers loudly instead. "+50"/"0050" stay
+# legal (they always worked), 0 and empty still mean "gate disabled".
+RST="$(trim_ws "$RISK_THRESHOLD")"
+if [ -n "$RST" ] && ! [[ "$RST" =~ ^\+?[0-9]+$ ]]; then
+  echo "ERROR: RISK_SCORE_THRESHOLD must be a non-negative integer or 0 to disable (got '$RISK_THRESHOLD')" >&2
+  FAIL=1; REASONS+=("invalid RISK_SCORE_THRESHOLD '$RISK_THRESHOLD'")
+elif [ -n "$RST" ] && [ "$RST" -gt 0 ] && [ "$RISK" -ge "$RST" ]; then
   FAIL=1; REASONS+=("risk $RISK >= threshold $RST")
 fi
 
 sev_rank() { case "$1" in critical) echo 4;; high) echo 3;; medium) echo 2;; low) echo 1;; info) echo 0;; *) echo -1;; esac; }
-ST="$SEV_THRESHOLD"
-if [ "$ST" != "none" ] && [ "$ST" != "" ]; then
-  if [ "$(sev_rank "$MAX_SEV")" -ge "$(sev_rank "$ST")" ] && [ "$COUNT" -gt 0 ]; then
+# Normalise before ranking. sev_rank's `*)` arm returns -1, which is <= every
+# real severity, so an unrecognised threshold used to turn the gate into its
+# LOOSEST setting (SEVERITY_THRESHOLD=HIGH failed a build on info-only
+# findings) while printing a self-refuting reason. Trim + lowercase first, then
+# reject anything still unranked rather than guessing what was meant.
+ST="$(trim_ws "$SEV_THRESHOLD")"; ST="${ST,,}"
+if [ -n "$ST" ] && [ "$ST" != "none" ]; then
+  if [ "$(sev_rank "$ST")" -lt 0 ]; then
+    echo "ERROR: SEVERITY_THRESHOLD must be one of critical, high, medium, low, info, none (got '$SEV_THRESHOLD')" >&2
+    FAIL=1; REASONS+=("invalid SEVERITY_THRESHOLD '$SEV_THRESHOLD'")
+  elif [ "$(sev_rank "$MAX_SEV")" -ge "$(sev_rank "$ST")" ] && [ "$COUNT" -gt 0 ]; then
     FAIL=1; REASONS+=("max severity $MAX_SEV >= threshold $ST")
   fi
 fi
