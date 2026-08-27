@@ -208,8 +208,10 @@ RAW_SCORE=$(jq -r '.overall_score // 1' "$JSON_FILE")
 SCORE=$(awk -v s="$RAW_SCORE" 'BEGIN{ v = s*100; if (v<0) v=0; if (v>100) v=100; printf "%d", v + 0.5 }')
 RISK=$(( 100 - SCORE ))
 COUNT=$(jq -r '.findings | length // 0' "$JSON_FILE")
+# `.findings[]?` rather than `.findings[]`: the engine emits a null findings
+# array on a clean scan, and iterating null is a jq error, not an empty list.
 MAX_SEV=$(jq -r '
-  [.findings[].severity] as $s
+  [.findings[]?.severity] as $s
   | if ($s|length)==0 then "none"
     elif any($s[]; .=="critical") then "critical"
     elif any($s[]; .=="high")     then "high"
