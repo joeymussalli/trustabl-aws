@@ -141,6 +141,16 @@ NATIVE_CODE=$?
 trustabl "${BASE_ARGS[@]}" --format json > "$JSON_FILE" || true
 SCAN_END=$(date -u +%Y-%m-%dT%H:%M:%S)
 
+# Everything below reads the JSON ScanResult. If the engine did not produce one
+# — it errored, was killed, ran out of disk — jq fails on every field and the
+# defaults take over: readiness 0, risk 100, an empty findings count. That is
+# not a bad repo, it is no repo, and reporting it as a score is worse than
+# reporting nothing. Exit 2: the scan did not complete.
+if ! jq -e 'type == "object" and has("overall_score")' "$JSON_FILE" >/dev/null 2>&1; then
+  echo "trustabl produced no usable JSON ScanResult at '$JSON_FILE' (engine exit $NATIVE_CODE); refusing to report a score." >&2
+  exit 2
+fi
+
 # trustabl's overall_score is a float in [0.0, 1.0]; scale to [0,100] ints.
 RAW_SCORE=$(jq -r '.overall_score // 1' "$JSON_FILE")
 SCORE=$(awk -v s="$RAW_SCORE" 'BEGIN{ v = s*100; if (v<0) v=0; if (v>100) v=100; printf "%d", v + 0.5 }')
