@@ -61,7 +61,14 @@ if [ "$VER" = "latest" ]; then
 fi
 if [ -z "$VER" ] || [ "$VER" = "null" ]; then
   echo "Could not resolve trustabl version. Pin 'VERSION' to a tag, or set GITHUB_TOKEN."
-  exit 1
+  exit 2
+fi
+# One path segment only. A slash, '..', or URL metacharacter in a pin or in
+# tag_name from /releases/latest would change
+# /releases/download/${VER}/${ASSET} and the local -o filename.
+if [[ "$VER" == */* || "$VER" == *\\* || "$VER" == *..* || "$VER" == *[[:space:]]* || "$VER" == *:* || "$VER" == *@* ]]; then
+  echo "Invalid trustabl version. Pin VERSION to a single release tag."
+  exit 2
 fi
 echo "Trustabl version: $VER"
 
@@ -70,12 +77,12 @@ VNUM="${VER#v}"
 case "$(uname -s)" in
   Linux)  OS=linux ;;
   Darwin) OS=darwin ;;
-  *) echo "Unsupported OS $(uname -s)"; exit 1 ;;
+  *) echo "Unsupported OS $(uname -s)"; exit 2 ;;
 esac
 case "$(uname -m)" in
   x86_64|amd64)  ARCH=amd64 ;;
   aarch64|arm64) ARCH=arm64 ;;
-  *) echo "Unsupported arch $(uname -m)"; exit 1 ;;
+  *) echo "Unsupported arch $(uname -m)"; exit 2 ;;
 esac
 ASSET="trustabl_${VNUM}_${OS}_${ARCH}.tar.gz"
 DEST="$(pwd)/.trustabl-bin"
