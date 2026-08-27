@@ -56,3 +56,10 @@ marketplaces. Distribution is **copy-paste**: vendor the `scan/` directory plus
 the relevant wrapper into your repo. A native CodePipeline action provider is an
 AWS Partner integration; an AWS Marketplace listing is a separate product
 (container/SaaS) motion.
+
+### Quick Start: Vendor into your Project
+Because AWS does not offer a native self-serve plugin marketplace, you can quickly vendor the Trustabl scanning system into your existing repository. Run this one-liner from your project root to fetch the latest scanner script and make it executable:
+
+```bash
+mkdir -p scan && curl -fsSL https://raw.githubusercontent.com/trustabl/trustabl-aws/main/scan/trustabl-scan.sh -o scan/trustabl-scan.sh && chmod +x scan/trustabl-scan.sh
+```
