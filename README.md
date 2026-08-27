@@ -11,7 +11,10 @@ One scanner (`scan/trustabl-scan.sh`), two integrations:
 | Target | How | Setup |
 |---|---|---|
 | **AWS CodePipeline** | CodeBuild action using `codepipeline/buildspec.yml` | [codepipeline/README.md](codepipeline/README.md) |
-| **Amazon CodeCatalyst** | Workflow action (`codecatalyst/workflows/trustabl.yaml`) | [codecatalyst/README.md](codecatalyst/README.md) |
+| **Amazon CodeCatalyst** † | Workflow action (`codecatalyst/workflows/trustabl.yaml`) | [codecatalyst/README.md](codecatalyst/README.md) |
+
+† CodeCatalyst has been closed to new customers since November 7, 2025. The
+integration is maintained for existing customers; new users want CodePipeline.
 
 ## Demo
 
