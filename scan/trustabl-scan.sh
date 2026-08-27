@@ -138,6 +138,12 @@ if [[ "$VER" == */* || "$VER" == *\\* || "$VER" == *..* || "$VER" == *[[:space:]
   echo "Invalid trustabl version. Pin VERSION to a single release tag."
   exit 2
 fi
+# Release tags are v-prefixed (v0.1.7). Accept VERSION=0.1.7 too — otherwise the
+# download URL is .../download/0.1.7/... which 404s against tag v0.1.7.
+case "$VER" in
+  v*) ;;
+  *) VER="v$VER" ;;
+esac
 echo "Trustabl version: $VER"
 
 # ---- install the release binary ----
