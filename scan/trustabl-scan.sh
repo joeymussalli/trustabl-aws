@@ -214,7 +214,6 @@ export PATH="$DEST:$PATH"
 
 # ---- scan ----
 set +e
-SCAN_START=$(date -u +%Y-%m-%dT%H:%M:%S)
 
 # Resolve the repo label (report box + summary).
 # Priority: explicit GitHub URL target -> target's git remote -> CodeBuild repo.
@@ -244,7 +243,6 @@ NATIVE_CODE=$?
 
 # Run 2: JSON (drives thresholds, log summary, dotenv).
 trustabl "${BASE_ARGS[@]}" --format json > "$JSON_FILE" || true
-SCAN_END=$(date -u +%Y-%m-%dT%H:%M:%S)
 
 # Everything below reads the JSON ScanResult. If the engine did not produce one
 # — it errored, was killed, ran out of disk — jq fails on every field and the
@@ -345,8 +343,6 @@ bar() { local v="$1" m="$2" w="$3" c="$4" f; f=$(awk -v v="$v" -v m="$m" -v w="$
 gauge() { local label="$1" v="$2" w="$3" c="$4" suf="$5" b text vis pad; b=$(bar "$v" 100 "$w" "$c"); text="$b $suf"; vis=$(( w + 1 + ${#suf} )); pad=$(( VAL_W - vis )); [ $pad -lt 0 ] && pad=0; printf '%s %-16s %s %b%*s %s\n' "$VB" "$label" "$VB" "$text$RESET" "$pad" '' "$VB"; }
 barcell() { local label="$1" v="$2" m="$3" c="$4" suf="$5" b text vis pad w=12; b=$(bar "$v" "$m" "$w" "$c"); text="$b $suf"; vis=$(( w + 1 + ${#suf} )); pad=$(( VAL_W - vis )); [ $pad -lt 0 ] && pad=0; printf '%s %-16s %s %b%*s %s\n' "$VB" "$label" "$VB" "$text$RESET" "$pad" '' "$VB"; }
 center() { local t="$1" c="$2" len=${#1} lp rp; lp=$(( (58-len)/2 )); [ $lp -lt 0 ] && lp=0; rp=$(( 58-len-lp )); [ $rp -lt 0 ] && rp=0; printf '%b|%b%*s%b%s%b%*s%b|%b\n' "$FG_CYA" "$RESET" "$lp" '' "$c" "$t" "$RESET" "$rp" '' "$FG_CYA" "$RESET"; }
-md_emoji() { local v="$1" w=10 f e i out=""; f=$(awk -v v="$v" -v w="$w" 'BEGIN{n=int(v/100*w+0.5);if(n>w)n=w;if(n<0)n=0;print n}'); if [ "$v" -ge 70 ] 2>/dev/null; then e="🟩"; elif [ "$v" -ge 40 ] 2>/dev/null; then e="🟨"; else e="🟥"; fi; for ((i=0;i<f;i++)); do out+="$e"; done; for ((i=f;i<w;i++)); do out+="⬜"; done; printf '%s' "$out"; }
-md_count() { local v="$1" m="$2" w=8 f i out=""; f=$(awk -v v="$v" -v m="$m" -v w="$w" 'BEGIN{if(m<=0)m=1;n=int(v/m*w+0.5);if(n>w)n=w;if(n<0)n=0;print n}'); for ((i=0;i<f;i++)); do out+="▰"; done; for ((i=f;i<w;i++)); do out+="▱"; done; printf '%s' "$out"; }
 trunc() { local s="$1" max="$2"; if [ ${#s} -gt "$max" ]; then printf '%s~' "${s:0:$((max-1))}"; else printf '%s' "$s"; fi; }
 sgn() { printf '%+d' "$1"; }
 
